@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     smtp_port: int = Field(587, alias="SMTP_PORT")
     smtp_user: str = Field(..., alias="SMTP_USER")
     smtp_password: str = Field(..., alias="SMTP_PASSWORD")
+    smtp_secure: bool = Field(True, alias="SMTP_SECURE")
+    smtp_auth: bool = Field(True, alias="SMTP_AUTH")
+    smtp_tls_reject_unauthorized: bool = Field(True, alias="SMTP_TLS_REJECT_UNAUTHORIZED")
+    smtp_enabled: bool = Field(True, alias="SMTP_ENABLED")
 
     mail_from: str = Field(..., alias="MAIL_FROM")
     isg_recipients: str = Field(..., alias="ISG_RECIPIENTS")
