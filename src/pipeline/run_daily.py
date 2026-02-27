@@ -8,7 +8,10 @@ from src.core.http import build_session
 from src.gazette.client import fetch_daily_html, daily_index_url
 from src.gazette.parser import parse_daily_items
 from src.notify.emailer import send_html_email
-from src.notify.templates import build_isg_email_html, build_isg_email_subject
+from src.notify.templates import build_generic_email_html, build_generic_email_subject
+from src.policies.ik import IkPolicy
+from src.policies.lojistik import LojistikPolicy
+from src.policies.muhasebe import MuhasebePolicy
 from src.policies.base import DepartmentPolicy
 from src.policies.isg import IsgPolicy
 
@@ -23,6 +26,12 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
     print(f"[INFO] items found: {len(items)}")
 
     settings = get_settings()
+    recipients_map = {
+        "isg": settings.isg_recipients,
+        "ik": settings.ik_recipients,
+        "muhasebe": settings.muhasebe_recipients,
+        "lojistik": settings.lojistik_recipients,
+    }
 
     for pol in policies:
         hits = []
@@ -36,12 +45,10 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
             print(f"- {item.title}")
             print(f"  {item.url}")
 
-        # only isg icin email (ilk MVP)
-        if pol.name == "isg" and hits:
-            subject = build_isg_email_subject(day, len(hits))
-            html_body = build_isg_email_html(day, hits)
-
-            recipients = settings.isg_recipients.split(",")
+        if hits:
+            recipients = recipients_map[pol.name].split(",")
+            subject = build_generic_email_subject(pol.name, day, len(hits))
+            html_body = build_generic_email_html(pol.name, day, hits)
 
             send_html_email(
                 smtp_host=settings.smtp_host,
@@ -54,8 +61,8 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
                 html_body=html_body,
             )
 
-            print("[INFO] ISG email sent.")
+            print(f"[INFO] {pol.name.upper()} email sent.")
 
 
 def default_policies() -> List[DepartmentPolicy]:
-    return [IsgPolicy()]
+    return [IsgPolicy(), IkPolicy(), MuhasebePolicy(), LojistikPolicy()]

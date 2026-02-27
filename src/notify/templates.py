@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from typing import Sequence
@@ -6,11 +6,12 @@ from typing import Sequence
 from src.core.models import GazetteItem
 
 
-def build_isg_email_subject(day: date, count: int) -> str:
-    return f"[İSG] Resmî Gazete ({day:%d.%m.%Y}) - {count} yeni kayıt"
+def build_generic_email_subject(dept: str, day: date, count: int) -> str:
+    return f"[{dept.upper()}] Resmî Gazete ({day:%d.%m.%Y}) - {count} yeni kayıt"
 
 
-def build_isg_email_html(day: date, items: Sequence[GazetteItem]) -> str:
+def build_generic_email_html(dept: str, day: date, items: Sequence[GazetteItem]) -> str:
+    title = dept.upper()
     rows = "\n".join(
         f"""
         <tr>
@@ -28,7 +29,7 @@ def build_isg_email_html(day: date, items: Sequence[GazetteItem]) -> str:
 
     return f"""
     <div style="font-family:Arial, sans-serif; max-width:700px;">
-      <h2 style="margin:0 0 12px 0;">İSG için Resmî Gazete Bildirimi</h2>
+      <h2 style="margin:0 0 12px 0;">{title} için Resmî Gazete Bildirimi</h2>
       <div style="color:#444;margin-bottom:12px;">
         Tarih: <b>{day:%d.%m.%Y}</b><br/>
         Bulunan kayıt: <b>{len(items)}</b>
@@ -43,6 +44,14 @@ def build_isg_email_html(day: date, items: Sequence[GazetteItem]) -> str:
       </p>
     </div>
     """
+
+
+def build_isg_email_subject(day: date, count: int) -> str:
+    return build_generic_email_subject("isg", day, count)
+
+
+def build_isg_email_html(day: date, items: Sequence[GazetteItem]) -> str:
+    return build_generic_email_html("isg", day, items)
 
 
 def _escape(s: str) -> str:

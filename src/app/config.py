@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     mail_from: str = Field(..., alias="MAIL_FROM")
     isg_recipients: str = Field(..., alias="ISG_RECIPIENTS")
+    ik_recipients: str = Field(..., alias="IK_RECIPIENTS")
+    muhasebe_recipients: str = Field(..., alias="MUHASEBE_RECIPIENTS")
+    lojistik_recipients: str = Field(..., alias="LOJISTIK_RECIPIENTS")
 
 
 def get_settings() -> Settings:
