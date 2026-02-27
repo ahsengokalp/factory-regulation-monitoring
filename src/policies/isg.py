@@ -54,9 +54,19 @@ class IsgPolicy(DepartmentPolicy):
         return "isg"
 
     def evaluate_title(self, item: GazetteItem) -> PolicyDecision:
+        # 1️⃣ İLAN BÖLÜMÜ ise direkt ilgisiz say
+        if item.section and "İLAN" in item.section.upper():
+            return PolicyDecision(
+                is_relevant=False,
+                score=0,
+                reasons=["section_excluded: İLAN BÖLÜMÜ"],
+            )
+
         haystack = " ".join(
             [x for x in [item.section, item.subsection, item.title] if x]
         )
+
         score, reasons = _score_text(haystack)
         is_relevant = score >= 10
+
         return PolicyDecision(is_relevant=is_relevant, score=score, reasons=reasons)
