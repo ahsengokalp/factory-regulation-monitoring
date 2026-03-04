@@ -23,7 +23,7 @@ from src.core.models import GazetteItem
 from src.gazette.client import daily_index_url, fetch_daily_html
 from src.notify.emailer import send_html_email
 from src.notify.templates import build_generic_email_html, build_generic_email_subject
-from src.pipeline.run_daily import CandidateDecision, collect_daily_hits, default_policies
+from src.pipeline.run_daily import CandidateDecision, PolicyHit, collect_daily_hits, default_policies
 from src.policies.base import PolicyDecision
 
 
@@ -88,6 +88,27 @@ def _decision_to_row(item: GazetteItem, decision: PolicyDecision) -> dict[str, A
     }
 
 
+def _policy_hit_to_row(hit: PolicyHit) -> dict[str, Any]:
+    item = hit.item
+    decision = hit.decision
+    llm = hit.llm
+    return {
+        "title": item.title,
+        "section": item.section or "",
+        "subsection": item.subsection or "",
+        "score": decision.score,
+        "is_relevant": decision.is_relevant,
+        "reasons": ", ".join(decision.reasons),
+        "llm_confidence": llm.confidence,
+        "llm_isg": llm.isg,
+        "llm_ik": llm.ik,
+        "llm_muhasebe": llm.muhasebe,
+        "llm_lojistik": llm.lojistik,
+        "llm_evidence": llm.evidence,
+        "url": item.url,
+    }
+
+
 def _run_debug(day: date) -> dict[str, Any]:
     start = perf_counter()
     settings = get_settings()
@@ -100,15 +121,30 @@ def _run_debug(day: date) -> dict[str, Any]:
 
     decisions_by_policy: dict[str, list[tuple[GazetteItem, PolicyDecision]]] = {}
     hits_by_policy: dict[str, list[tuple[GazetteItem, PolicyDecision]]] = {}
+    policy_hits_by_policy: dict[str, list[PolicyHit]] = {}
     item_hits: dict[str, list[str]] = defaultdict(list)
+    llm_rows_by_url: dict[str, dict[str, Any]] = {}
 
     for policy_name, policy_hits in raw_hits_by_policy.items():
         decisions = [(hit.item, hit.decision) for hit in policy_hits]
         hits = [(hit.item, hit.decision) for hit in policy_hits]
+        policy_hits_by_policy[policy_name] = policy_hits
 
-        for item, _ in hits:
+        for hit in policy_hits:
+            item = hit.item
             key = f"{item.title}|{item.url}"
             item_hits[key].append(policy_name)
+            llm_rows_by_url[item.url] = {
+                "title": item.title,
+                "url": item.url,
+                "isg": hit.llm.isg,
+                "ik": hit.llm.ik,
+                "muhasebe": hit.llm.muhasebe,
+                "lojistik": hit.llm.lojistik,
+                "confidence": hit.llm.confidence,
+                "evidence": hit.llm.evidence,
+                "raw": hit.llm.raw,
+            }
 
         decisions_by_policy[policy_name] = decisions
         hits_by_policy[policy_name] = hits
@@ -150,6 +186,8 @@ def _run_debug(day: date) -> dict[str, Any]:
         "subsection_counts": subsection_counts,
         "decisions_by_policy": decisions_by_policy,
         "hits_by_policy": hits_by_policy,
+        "policy_hits_by_policy": policy_hits_by_policy,
+        "llm_rows": list(llm_rows_by_url.values()),
         "recipients_map": recipients_map,
         "matrix_rows": matrix_rows,
         "elapsed_s": elapsed_s,
@@ -191,6 +229,8 @@ def main() -> None:
     candidate_map: dict[str, CandidateDecision] = result["candidate_map"]
     hits_by_policy: dict[str, list[tuple[GazetteItem, PolicyDecision]]] = result["hits_by_policy"]
     decisions_by_policy: dict[str, list[tuple[GazetteItem, PolicyDecision]]] = result["decisions_by_policy"]
+    policy_hits_by_policy: dict[str, list[PolicyHit]] = result["policy_hits_by_policy"]
+    llm_rows: list[dict[str, Any]] = result["llm_rows"]
 
     total_hits = sum(len(hits) for hits in hits_by_policy.values())
 
@@ -200,8 +240,8 @@ def main() -> None:
     metric_col3.metric("Total Hits", total_hits)
     metric_col4.metric("Elapsed", f"{result['elapsed_s']:.2f}s")
 
-    tab_overview, tab_items, tab_policy, tab_email, tab_html = st.tabs(
-        ["Overview", "Items", "Policies", "Email Preview", "HTML"]
+    tab_overview, tab_items, tab_policy, tab_llm, tab_email, tab_html = st.tabs(
+        ["Overview", "Items", "Policies", "LLM", "Email Preview", "HTML"]
     )
 
     with tab_overview:
@@ -237,9 +277,10 @@ def main() -> None:
     with tab_policy:
         for policy_name, decisions in decisions_by_policy.items():
             hits = hits_by_policy[policy_name]
+            policy_hits = policy_hits_by_policy.get(policy_name, [])
             with st.expander(f"{policy_name.upper()} | hits: {len(hits)} / {len(decisions)}", expanded=True):
-                rows_source = hits if show_only_hits else decisions
-                decision_rows = [_decision_to_row(item, decision) for item, decision in rows_source]
+                rows_source = policy_hits if show_only_hits else policy_hits
+                decision_rows = [_policy_hit_to_row(hit) for hit in rows_source]
                 st.dataframe(decision_rows[:row_limit], use_container_width=True, hide_index=True)
 
                 reason_counts = Counter(reason for _, decision in decisions for reason in decision.reasons)
@@ -247,6 +288,32 @@ def main() -> None:
                     st.write("Top reasons")
                     reason_rows = [{"reason": reason, "count": count} for reason, count in reason_counts.most_common()]
                     st.dataframe(reason_rows[:row_limit], use_container_width=True, hide_index=True)
+
+    with tab_llm:
+        if not llm_rows:
+            st.info("No LLM responses to display.")
+        else:
+            llm_sorted = sorted(llm_rows, key=lambda row: row.get("confidence", 0), reverse=True)
+            table_rows = [
+                {
+                    "title": row["title"],
+                    "url": row["url"],
+                    "confidence": row["confidence"],
+                    "isg": row["isg"],
+                    "ik": row["ik"],
+                    "muhasebe": row["muhasebe"],
+                    "lojistik": row["lojistik"],
+                    "evidence": row["evidence"],
+                }
+                for row in llm_sorted
+            ]
+            st.dataframe(table_rows[:row_limit], use_container_width=True, hide_index=True)
+
+            st.subheader("Raw LLM Output")
+            for row in llm_sorted[: min(row_limit, 50)]:
+                with st.expander(f"{row['title']} | conf={row['confidence']}"):
+                    st.write(row["url"])
+                    st.code(row["raw"], language="json")
 
     with tab_email:
         recipients_map: dict[str, list[str]] = result["recipients_map"]
