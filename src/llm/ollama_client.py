@@ -76,13 +76,25 @@ class OllamaClient:
 Sen bir mevzuat analiz uzmanısın.
 
 Görev:
-Aşağıdaki Resmî Gazete içeriği fabrikada hangi departmanları etkiler?
+Aşağıdaki Resmî Gazete içeriği bir fabrikada hangi departmanları etkiler?
 Departmanlar: ISG, IK, MUHASEBE, LOJISTIK
 
-Kurallar:
-- İlan/duyuru (vefat, etkinlik, üniversite iç yönetmelik vb.) ise genelde hepsi false.
-- Sadece metne dayan.
-- Sadece TEK SATIR JSON döndür.
+Ön kapı sorusu (zorunlu):
+"Bu düzenleme özel sektör üretim işletmelerinin yükümlülüklerini değiştiriyor mu?"
+- Önce bu soruyu cevapla.
+- Cevap HAYIR ise departmanların tamamı false olmalı (isg=false, ik=false, muhasebe=false, lojistik=false).
+- Cevap EVET ise departmanları ayrı ayrı değerlendir.
+
+Kritik kural:
+Başlık ipucu olabilir ama nihai kararı metindeki uygulanabilir yükümlülük/değişiklik/sorumluluk üzerinden ver.
+
+Genel dışlama kuralları:
+- İlan/duyuru (vefat, etkinlik, ihale ilanı, üniversite iç yönetmelik vb.) ise genelde hepsi false.
+- Belirli proje/il/taşınmaz kamulaştırması ise genelde hepsi false (fabrikayı doğrudan etkilemediği sürece).
+
+Sektörel kurallar:
+- Bankacılık/TCMB düzenlemeleri genelde ISG/IK/LOJISTIK=false olabilir; ancak şirket finansını etkilediği için MUHASEBE=true olabilir.
+- Kamu kurum içi kadro/atama/teşkilat düzenlemesi genelde hepsi false; istisna: çalışma hayatı/iş hukuku/SGK gibi genel bir yükümlülük içeriyorsa IK=true olabilir.
 
 Departman Tanımları (fabrika bağlamı):
 - ISG: iş sağlığı ve güvenliği, 6331, risk değerlendirme, iş kazası, acil durum, OSGB vb.
@@ -90,16 +102,26 @@ Departman Tanımları (fabrika bağlamı):
 - MUHASEBE: vergi, KDV, e-fatura/e-defter, finans, faiz, karşılık, muhasebe standartları vb.
 - LOJISTIK: gümrük, GTIP, ithalat/ihracat, dış ticaret mevzuatı, antrepo, ADR, taşıma, tedarik vb.
 
+Lojistik guard:
+LOJISTIK=true demek için metinde/başlıkta şu kelimelerden en az biri açıkça geçmeli:
+gümrük, GTİP, ithalat, ihracat, dış ticaret, antrepo, A.TR, EUR.1, navlun, konşimento, ADR, taşıma, nakliye, liman, konteyner.
+Bu kelimeler yoksa LOJISTIK=false.
+
 Not: "dış ticaret" ve "ihracat/ithalat" konuları IK değil, LOJISTIK kapsamındadır.
 
+Evidence zorunludur:
+Metinden en az bir ifade/kurum adı al ve "fabrikaya etkisini" tek cümlede yaz.
+Genel/yuvarlak gerekçe yazma.
+
+Sadece TEK SATIR JSON döndür.
+
 Format:
-{{"isg": true/false, "ik": true/false, "muhasebe": true/false, "lojistik": true/false,
-"confidence": 0-100, "evidence": "kısa kanıt cümlesi"}}
+{{"affects_private_manufacturing_obligations": true/false,
+"isg": true/false, "ik": true/false, "muhasebe": true/false, "lojistik": true/false,
+"confidence": 0-100, "evidence": "metinden kanıt + fabrikaya etkisi"}}
 
 Başlık: {title}
 URL: {url}
-
-Not: Başlık, departman sınıflandırmasında güçlü bir sinyaldir. Metin kısa olsa bile başlığa göre karar verebilirsin.
 
 METİN:
 {text}
@@ -115,14 +137,29 @@ METİN:
             }
         )
         try:
-            obj = json.loads(raw[raw.find("{") : raw.rfind("}") + 1])
+            obj = _parse_json_object(raw)
+            affects_obligations = _as_bool(obj.get("affects_private_manufacturing_obligations", True))
+            confidence = int(obj.get("confidence", 0))
+            evidence = str(obj.get("evidence", "")).strip()
+
+            if not affects_obligations:
+                return MultiDeptDecision(
+                    isg=False,
+                    ik=False,
+                    muhasebe=False,
+                    lojistik=False,
+                    confidence=confidence,
+                    evidence=evidence,
+                    raw=raw,
+                )
+
             return MultiDeptDecision(
-                isg=bool(obj.get("isg", False)),
-                ik=bool(obj.get("ik", False)),
-                muhasebe=bool(obj.get("muhasebe", False)),
-                lojistik=bool(obj.get("lojistik", False)),
-                confidence=int(obj.get("confidence", 0)),
-                evidence=str(obj.get("evidence", "")).strip(),
+                isg=_as_bool(obj.get("isg", False)),
+                ik=_as_bool(obj.get("ik", False)),
+                muhasebe=_as_bool(obj.get("muhasebe", False)),
+                lojistik=_as_bool(obj.get("lojistik", False)),
+                confidence=confidence,
+                evidence=evidence,
                 raw=raw,
             )
         except Exception:
@@ -139,10 +176,15 @@ Aşağıdaki içerik "{department}" departmanını bir fabrikada (uyum/operasyon
 Kurallar:
 - İlan/duyuru (vefat, etkinlik, üniversite iç yönetmelik vb.) ise genelde NO.
 - Sadece metne dayan.
+- Başlık sadece ipucudur; nihai kararı metindeki uygulanabilir yükümlülük/değişiklik/sorumluluk üzerinden ver.
+- Sadece bankalar/finansal kuruluşlara yönelik düzenleme ise NO.
+- Sadece kamu kurum içi kadro/atama/teşkilat düzenlemesi ise NO.
+- Belirli proje/il/taşınmaz kamulaştırması ise (fabrikanın adı geçmiyorsa) NO.
 - Cevabı sadece TEK SATIR JSON olarak ver.
+Evidence zorunludur: metinden en az bir ifade/kurum adı ve fabrikaya etkisini tek cümlede birlikte yaz.
 
 Format (tek satır JSON):
-{{"relevant": true/false, "confidence": 0-100, "evidence": "metinden kısa kanıt cümlesi"}}
+{{"relevant": true/false, "confidence": 0-100, "evidence": "metinden kanıt + fabrikaya etkisi"}}
 
 Başlık: {title}
 URL: {url}
@@ -154,13 +196,45 @@ METİN:
 
 def _parse(raw: str) -> LlmDecision:
     try:
-        s = raw[raw.find("{") : raw.rfind("}") + 1]
-        obj = json.loads(s)
+        obj = _parse_json_object(raw)
         return LlmDecision(
-            relevant=bool(obj.get("relevant", False)),
+            relevant=_as_bool(obj.get("relevant", False)),
             confidence=int(obj.get("confidence", 0)),
             evidence=str(obj.get("evidence", "")).strip(),
             raw=raw,
         )
     except Exception:
         return LlmDecision(False, 0, "", raw)
+
+
+def _parse_json_object(raw: str) -> dict:
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        raise ValueError("No JSON object found in LLM response")
+
+    parsed = json.loads(raw[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM response JSON is not an object")
+    return parsed
+
+
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "evet"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "hayır", "hayir", ""}:
+            return False
+    return False
