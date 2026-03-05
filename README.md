@@ -83,6 +83,8 @@ SMTP_TLS_REJECT_UNAUTHORIZED=true
 SMTP_ENABLED=true
 
 MAIL_FROM=Toolbox <docker@dikkan.com>
+ADMIN_MAIL_ENABLED=true
+ADMIN_RECIPIENTS=admin1@company.com,admin2@company.com
 
 ISG_RECIPIENTS=isg1@company.com,isg2@company.com
 IK_RECIPIENTS=ik1@company.com,ik2@company.com
@@ -110,7 +112,18 @@ python -m src.app.main --date (Get-Date -Format 'yyyy-MM-dd')
 Calisinca:
 - terminale item/hit/mail bilgileri basilir,
 - SMTP aciksa mail gonderilir,
-- mail sonucu log dosyalarina yazilir.
+- mail sonucu log dosyalarina yazilir,
+- admin alicilarina "calisti/calismadi" durum ozeti maili gonderilir.
+
+## Admin Durum Maili
+
+Her calistirmada admin tarafina durum maili gider:
+- Basarili calismada: hangi departmanlara mail gittigi, kime gittigi, konu ve ornek basliklar.
+- Hatali calismada: "calismadi" durumu + hata ozeti + traceback.
+
+Kontrol ayarlari:
+- `ADMIN_MAIL_ENABLED=true/false`
+- `ADMIN_RECIPIENTS=...`
 
 ## Cron ile Gunluk Calistirma (Linux Sunucu)
 

@@ -47,6 +47,25 @@ class PolicyHit:
     llm: MultiDeptDecision
 
 
+@dataclass(frozen=True)
+class DepartmentMailResult:
+    department: str
+    hit_count: int
+    recipients: Tuple[str, ...]
+    subject: str
+    status: str  # sent | failed | skipped_no_hits | skipped_no_recipients
+    sample_titles: Tuple[str, ...] = ()
+    error: str = ""
+
+
+@dataclass(frozen=True)
+class RunReport:
+    day: date
+    total_items: int
+    hit_counts: Dict[str, int]
+    department_results: Tuple[DepartmentMailResult, ...]
+
+
 def decide_candidate(item: GazetteItem) -> CandidateDecision:
     # 1) If section is ilan, skip directly.
     if is_excluded_section(item):
@@ -162,7 +181,8 @@ def collect_daily_hits(
     return items, candidate_map, hits_by_policy
 
 
-def run(day: date, policies: List[DepartmentPolicy]) -> None:
+def run(day: date, policies: List[DepartmentPolicy]) -> RunReport:
+    _ = policies
     settings = get_settings()
     session = build_session()
 
@@ -225,19 +245,42 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
         "muhasebe": [v.strip() for v in settings.muhasebe_recipients.split(",") if v and v.strip()],
         "lojistik": [v.strip() for v in settings.lojistik_recipients.split(",") if v and v.strip()],
     }
+    dept_order = ("isg", "ik", "muhasebe", "lojistik")
+    department_results: list[DepartmentMailResult] = []
 
-    for dept in ["isg", "ik", "muhasebe", "lojistik"]:
+    for dept in dept_order:
         hits = hits_by_dept.get(dept, [])
         if not hits:
-            continue
-
-        recipients = recipients_map.get(dept, [])
-        if not recipients:
-            print(f"[WARN] {dept.upper()}: no recipients configured")
+            department_results.append(
+                DepartmentMailResult(
+                    department=dept,
+                    hit_count=0,
+                    recipients=(),
+                    subject="",
+                    status="skipped_no_hits",
+                )
+            )
             continue
 
         hit_items = [item for item, _ in hits]
+        sample_titles = tuple(item.title for item in hit_items[:5])
         subject = build_generic_email_subject(dept, day, len(hit_items))
+        recipients = recipients_map.get(dept, [])
+        if not recipients:
+            print(f"[WARN] {dept.upper()}: no recipients configured")
+            department_results.append(
+                DepartmentMailResult(
+                    department=dept,
+                    hit_count=len(hit_items),
+                    recipients=(),
+                    subject=subject,
+                    status="skipped_no_recipients",
+                    sample_titles=sample_titles,
+                    error="No recipients configured",
+                )
+            )
+            continue
+
         html_body = build_generic_email_html(dept, day, hit_items)
 
         try:
@@ -256,11 +299,32 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
                 html_body=html_body,
             )
             print(f"[INFO] {dept.upper()}: email sent to {', '.join(recipients)}")
+            department_results.append(
+                DepartmentMailResult(
+                    department=dept,
+                    hit_count=len(hit_items),
+                    recipients=tuple(recipients),
+                    subject=subject,
+                    status="sent",
+                    sample_titles=sample_titles,
+                )
+            )
         except Exception as exc:  # pragma: no cover - network dependent
             print(f"[ERROR] {dept.upper()}: email failed -> {exc}")
+            department_results.append(
+                DepartmentMailResult(
+                    department=dept,
+                    hit_count=len(hit_items),
+                    recipients=tuple(recipients),
+                    subject=subject,
+                    status="failed",
+                    sample_titles=sample_titles,
+                    error=str(exc),
+                )
+            )
 
     # 5) Print results
-    for dept in ["isg", "ik", "muhasebe", "lojistik"]:
+    for dept in dept_order:
         hits = hits_by_dept.get(dept, [])
         print(f"\n=== Department: {dept} | hits: {len(hits)} ===")
         for item, md in hits[:10]:
@@ -268,6 +332,13 @@ def run(day: date, policies: List[DepartmentPolicy]) -> None:
             print(f"  {item.url}")
             if md.evidence:
                 print(f"  evidence: {md.evidence}")
+
+    return RunReport(
+        day=day,
+        total_items=len(items),
+        hit_counts={dept: len(hits_by_dept.get(dept, [])) for dept in dept_order},
+        department_results=tuple(department_results),
+    )
 
 
 def default_policies() -> List[DepartmentPolicy]:

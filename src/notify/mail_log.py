@@ -79,13 +79,14 @@ def _read_events(max_rows: int = 1000) -> list[dict]:
 
 def _logo_data_uri() -> str:
     candidates = (
-        ("dikkan_logo.png", "image/png"),
-        ("dikkan_logo.jpg", "image/jpeg"),
-        ("dikkan_logo.jpeg", "image/jpeg"),
-        ("dikkan_logo.svg", "image/svg+xml"),
+        (LOG_DIR / "LOGO.png", "image/png"),
+        (LOG_DIR / "logo.png", "image/png"),
+        (ASSETS_DIR / "dikkan_logo.png", "image/png"),
+        (ASSETS_DIR / "dikkan_logo.jpg", "image/jpeg"),
+        (ASSETS_DIR / "dikkan_logo.jpeg", "image/jpeg"),
+        (ASSETS_DIR / "dikkan_logo.svg", "image/svg+xml"),
     )
-    for filename, mime in candidates:
-        path = ASSETS_DIR / filename
+    for path, mime in candidates:
         if not path.exists():
             continue
         data = base64.b64encode(path.read_bytes()).decode("ascii")

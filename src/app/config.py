@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     smtp_enabled: bool = Field(True, alias="SMTP_ENABLED")
 
     mail_from: str = Field(..., alias="MAIL_FROM")
+    admin_mail_enabled: bool = Field(True, alias="ADMIN_MAIL_ENABLED")
+    admin_recipients: str = Field("", alias="ADMIN_RECIPIENTS")
     isg_recipients: str = Field(..., alias="ISG_RECIPIENTS")
     ik_recipients: str = Field(..., alias="IK_RECIPIENTS")
     muhasebe_recipients: str = Field(..., alias="MUHASEBE_RECIPIENTS")
