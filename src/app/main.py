@@ -12,7 +12,7 @@ from src.pipeline.run_daily import RunReport, default_policies, run
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
-    p.add_argument("--date", required=True, help="YYYY-MM-DD")
+    p.add_argument("--date", required=False, help="YYYY-MM-DD (default: today)")
     return p.parse_args()
 
 
@@ -84,7 +84,10 @@ def _send_admin_status_email(
 
 def main() -> None:
     args = parse_args()
-    day = datetime.strptime(args.date, "%Y-%m-%d").date()
+    if args.date:
+        day = datetime.strptime(args.date, "%Y-%m-%d").date()
+    else:
+        day = date.today()
 
     report: RunReport | None = None
     run_error: Exception | None = None

@@ -23,7 +23,7 @@ from src.policies.isg import IsgPolicy
 from src.policies.lojistik import LojistikPolicy
 from src.policies.muhasebe import MuhasebePolicy
 from src.policies.negative_filter import apply_negative_rules
-from src.policies.utils import build_haystack, is_excluded_section, is_ilan_url
+from src.policies.utils import build_haystack, is_excluded_section, is_ilan_url, contains_financial_keywords
 
 REQUEST_DELAY_SECONDS = 0.35
 
@@ -147,7 +147,8 @@ def collect_daily_hits(
             print("[DEBUG] TEXT_LEN:", len(text))
             print("[DEBUG] TEXT_HEAD:", text[:300].replace("\n", " "))
 
-        if not text:
+        # If no detail text, allow proceeding for financial-like titles
+        if not text and not contains_financial_keywords(build_haystack(item)):
             continue
 
         md = llm_cache.get(item.url)
@@ -162,7 +163,11 @@ def collect_daily_hits(
                 print("[DEBUG] LLM_EVIDENCE:", md.evidence)
             llm_cache[item.url] = md
 
-        if md.confidence < 40:
+        # Confidence gate with financial keyword handling
+        haystack_local = build_haystack(item)
+        is_financial_local = contains_financial_keywords(haystack_local)
+        threshold_local = 20 if is_financial_local else 40
+        if md.confidence < threshold_local:
             continue
 
         if md.isg and "isg" in policy_map:
@@ -172,6 +177,10 @@ def collect_daily_hits(
             decision = policy_map["ik"].evaluate_title(item)
             hits_by_policy["ik"].append(PolicyHit(item=item, decision=decision, llm=md))
         if md.muhasebe and "muhasebe" in policy_map:
+            decision = policy_map["muhasebe"].evaluate_title(item)
+            hits_by_policy["muhasebe"].append(PolicyHit(item=item, decision=decision, llm=md))
+        elif is_financial_local and "muhasebe" in policy_map:
+            # pre-mark muhasebe for financial-like titles
             decision = policy_map["muhasebe"].evaluate_title(item)
             hits_by_policy["muhasebe"].append(PolicyHit(item=item, decision=decision, llm=md))
         if md.lojistik and "lojistik" in policy_map:
@@ -189,6 +198,14 @@ def run(day: date, policies: List[DepartmentPolicy]) -> RunReport:
     html = fetch_daily_html(session=session, day=day)
     items = parse_daily_items(html=html, base_url=daily_index_url(day))
     print(f"[INFO] items found: {len(items)}")
+    # Print parsed items so they are visible in terminal output
+    for it in items:
+        print(f"- {it.title}")
+        print(f"  {it.url}")
+        if it.section:
+            print(f"  section: {it.section}")
+        if it.subsection:
+            print(f"  subsection: {it.subsection}")
 
     ollama = OllamaClient(settings.ollama_base_url, settings.ollama_model)
 
@@ -217,7 +234,8 @@ def run(day: date, policies: List[DepartmentPolicy]) -> RunReport:
             text_cache[item.url] = text
         text = (text or "").strip()
 
-        if not text:
+        # If no detail text (e.g., PDF), allow proceeding when title/haystack looks financial
+        if not text and not contains_financial_keywords(haystack):
             continue
 
         # 3) LLM cache (multi-label)
@@ -227,14 +245,21 @@ def run(day: date, policies: List[DepartmentPolicy]) -> RunReport:
             llm_cache[item.url] = md
 
         # 4) Confidence gate
-        if md.confidence < 40:
+        # Confidence gate: lower threshold for financial-like titles
+        haystack = build_haystack(item)
+        is_financial = contains_financial_keywords(haystack)
+        threshold = 20 if is_financial else 40
+        if md.confidence < threshold:
             continue
 
         if md.isg:
             hits_by_dept["isg"].append((item, md))
         if md.ik:
             hits_by_dept["ik"].append((item, md))
+        # Pre-mark muhasebe if title contains financial keywords even if LLM didn't
         if md.muhasebe:
+            hits_by_dept["muhasebe"].append((item, md))
+        elif is_financial:
             hits_by_dept["muhasebe"].append((item, md))
         if md.lojistik:
             hits_by_dept["lojistik"].append((item, md))

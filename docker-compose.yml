@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  regulation_monitoring:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: regulation_monitoring
+    container_name: regulation_monitoring
+    ports:
+      - "5048:5048"
+    environment:
+      - NODE_ENV=production
+    restart: always
+    volumes:
+      - ./data:/app/data

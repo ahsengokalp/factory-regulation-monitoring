@@ -1,1 +1,8 @@
-.env
+src/app/__pycache__/
+src/core/__pycache__/
+src/gazette/__pycache__/
+src/notify/__pycache__/
+src/pipeline/__pycache__/
+src/policies/__pycache__/
+src/llm/__pycache__/
+src/tools/__pycache__/

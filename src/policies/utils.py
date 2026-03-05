@@ -15,3 +15,22 @@ def build_haystack(item: GazetteItem) -> str:
 
 def is_ilan_url(url: str) -> bool:
     return "/ilanlar/" in (url or "").lower()
+
+
+def contains_financial_keywords(text: str) -> bool:
+    if not text:
+        return False
+    kws = [
+        "vergi",
+        "özel tüketim vergisi",
+        "kDV",
+        "kdv",
+        "vergi tutar",
+        "vergi oran",
+        "stopaj",
+        "matrah",
+        "vergiye",
+        "vergisi",
+    ]
+    lower = text.lower()
+    return any(k.lower() in lower for k in kws)
