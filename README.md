@@ -112,6 +112,34 @@ Calisinca:
 - SMTP aciksa mail gonderilir,
 - mail sonucu log dosyalarina yazilir.
 
+## Cron ile Gunluk Calistirma (Linux Sunucu)
+
+Bu repo icine cron icin hazir script eklendi:
+- `scripts/run_daily.sh`
+
+Kurulum adimlari:
+
+1. Script'i calistirilabilir yap:
+```bash
+chmod +x scripts/run_daily.sh
+```
+
+2. Elle test et:
+```bash
+./scripts/run_daily.sh
+```
+
+3. `crontab` girisi ekle (her gun saat 10:00, Istanbul):
+```cron
+CRON_TZ=Europe/Istanbul
+0 10 * * * /opt/factory-regulation-monitoring/scripts/run_daily.sh
+```
+
+Not:
+- Path'i kendi sunucu dizinine gore guncelleyin.
+- Script varsayilan olarak bugun tarihini kullanir.
+- Isterseniz tarih parametresi de verebilirsiniz: `./scripts/run_daily.sh 2026-03-05`
+
 ## Log Ekrani (Streamlit'ten Bagimsiz)
 
 Bu ekran Streamlit degil, dogrudan HTML dosyasidir.
