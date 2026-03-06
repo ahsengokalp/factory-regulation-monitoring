@@ -7,6 +7,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # .../factory-regulation-monitoring
 ENV_PATH = PROJECT_ROOT / ".env"
 
+# Fallback: if .env not found at project root, try working directory
+if not ENV_PATH.exists():
+    ENV_PATH = Path.cwd() / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
